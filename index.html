@@ -7,9 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js"></script>
     <style>
         body {
             font-family: 'Arial', sans-serif;
@@ -342,24 +339,9 @@
     </div>
 
     <script>
-       // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyC1EyWbu0v-XgIR7IfymXwuP11J-uvyw_w",
-  authDomain: "health-data-9988f.firebaseapp.com",
-  projectId: "health-data-9988f",
-  storageBucket: "health-data-9988f.firebasestorage.app",
-  messagingSenderId: "669353082503",
-  appId: "1:669353082503:web:154ad1c4517677ce1dc222",
-  measurementId: "G-YZ11KZLRL1"
-};
-
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
-
         // Global student data storage
         let studentData = {
-            // Sample data - will be replaced by imported data or fetched from Firebase
+            // Sample data - will be replaced by imported data
             '101': { name: 'John Doe', class: '10A', room_cup: 'Room 101' },
             '102': { name: 'Jane Smith', class: '10B', room_cup: 'Room 102' }
         };
@@ -392,8 +374,8 @@ const firebaseConfig = {
 
             // If navigating to Record page, update the table and graph
             if (pageNumber === 2) {
-                // Fetch data from Firebase when navigating to the Record page
-                fetchRecordedDataFromFirebase();
+                displayRecordedData();
+                updateGraph();
             }
         }
         
@@ -440,38 +422,18 @@ const firebaseConfig = {
                 med_03: document.getElementById('med_03').checked
             };
             
-            // Save data to Firebase Realtime Database
-            database.ref('health_reports').push(formData)
-                .then(() => {
-                    console.log('Form submitted and saved to Firebase:', formData);
-                    alert('Issue report submitted successfully!');
-                    this.reset();
-                    // No need to push to local recordedData here, as it will be fetched from Firebase
-                    // when navigating to the Record page or on initial load.
-                })
-                .catch(error => {
-                    console.error('Error saving to Firebase:', error);
-                    alert('Error submitting report. Please try again.');
-                });
+            console.log('Form submitted:', formData);
+            alert('Issue report submitted successfully!');
+            this.reset();
+            // Store data for graphing and table display
+            recordedData.push(formData);
+            displayRecordedData(); // Update the table immediately
+            updateGraph(); // Update the graph immediately
         });
         
         // Helper function to get check/cross mark
         function getMark(isChecked) {
             return isChecked ? '<span class="check-mark">✓</span>' : '<span class="cross-mark">✗</span>';
-        }
-
-        // Fetch recorded data from Firebase
-        function fetchRecordedDataFromFirebase() {
-            database.ref('health_reports').on('value', (snapshot) => {
-                recordedData = []; // Clear existing data
-                snapshot.forEach((childSnapshot) => {
-                    recordedData.push(childSnapshot.val());
-                });
-                displayRecordedData(); // Update the table with fetched data
-                updateGraph(); // Update the graph with fetched data
-            }, (errorObject) => {
-                console.error('The read failed: ' + errorObject.name);
-            });
         }
 
         // Display recorded data in table (Page 2)
@@ -640,12 +602,6 @@ const firebaseConfig = {
                         document.getElementById('imported_student_data_display').classList.remove('hidden');
                         alert(`Successfully imported ${importedCount} student records!`);
                         console.log('Imported Student Data:', studentData);
-
-                        // Optionally, save imported student data to Firebase
-                        // database.ref('student_master_data').set(studentData)
-                        //     .then(() => console.log("Student master data saved to Firebase"))
-                        //     .catch(error => console.error("Error saving student master data:", error));
-
                     } else {
                         alert('No valid data found in the selected file.');
                         document.getElementById('imported_student_data_display').classList.add('hidden');
@@ -675,8 +631,6 @@ const firebaseConfig = {
         
         // Initialize
         updateDate();
-        // Initial fetch of recorded data when the page loads
-        fetchRecordedDataFromFirebase();
         
         // Trigger auto-fill if MID is already entered when page loads
         const initialMid = document.getElementById('student_mid').value;
