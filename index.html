@@ -7,6 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
     <style>
         body {
             font-family: 'Arial', sans-serif;
@@ -339,15 +342,27 @@
     </div>
 
     <script>
+      // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyC1EyWbu0v-XgIR7IfymXwuP11J-uvyw_w",
+  authDomain: "health-data-9988f.firebaseapp.com",
+  databaseURL: "https://health-data-9988f-default-rtdb.firebaseio.com",
+  projectId: "health-data-9988f",
+  storageBucket: "health-data-9988f.firebasestorage.app",
+  messagingSenderId: "669353082503",
+  appId: "1:669353082503:web:154ad1c4517677ce1dc222",
+  measurementId: "G-YZ11KZLRL1"
+};
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database(); // Get a reference to the Realtime Database service
+
         // Global student data storage
-        let studentData = {
-            // Sample data - will be replaced by imported data
-            '101': { name: 'John Doe', class: '10A', room_cup: 'Room 101' },
-            '102': { name: 'Jane Smith', class: '10B', room_cup: 'Room 102' }
-        };
+        let studentData = {}; // Initialize as empty, will be populated from Firebase
 
         // Global storage for submitted health records
-        let recordedData = [];
+        let recordedData = []; // Initialize as empty, will be populated from Firebase
 
         // Display current date
         function updateDate() {
@@ -376,6 +391,10 @@
             if (pageNumber === 2) {
                 displayRecordedData();
                 updateGraph();
+            }
+            // If navigating to Student Data page, display the imported data
+            if (pageNumber === 3) {
+                displayImportedStudentData();
             }
         }
         
@@ -423,12 +442,19 @@
             };
             
             console.log('Form submitted:', formData);
-            alert('Issue report submitted successfully!');
-            this.reset();
-            // Store data for graphing and table display
-            recordedData.push(formData);
-            displayRecordedData(); // Update the table immediately
-            updateGraph(); // Update the graph immediately
+            
+            // Save to Firebase Realtime Database
+            database.ref('healthRecords').push(formData)
+                .then(() => {
+                    alert('Issue report submitted successfully!');
+                    this.reset();
+                    console.log("Data saved to Firebase successfully!");
+                    // Data will be automatically updated in recordedData via the 'value' listener
+                })
+                .catch((error) => {
+                    console.error("Error saving data to Firebase: ", error);
+                    alert('Error submitting report. Please try again.');
+                });
         });
         
         // Helper function to get check/cross mark
@@ -550,6 +576,29 @@
             }
         });
 
+        // Display imported student data in table (Page 3)
+        function displayImportedStudentData() {
+            const tableBody = document.getElementById('student_data_table_body');
+            tableBody.innerHTML = ''; // Clear existing rows
+
+            if (Object.keys(studentData).length > 0) {
+                for (const mid in studentData) {
+                    const student = studentData[mid];
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${mid}</td>
+                        <td>${student.name || ''}</td>
+                        <td>${student.class || ''}</td>
+                        <td>${student.room_cup || ''}</td>
+                    `;
+                    tableBody.appendChild(tr);
+                }
+                document.getElementById('imported_student_data_display').classList.remove('hidden');
+            } else {
+                document.getElementById('imported_student_data_display').classList.add('hidden');
+            }
+        }
+
         // Import Student Data (Page 3)
         document.getElementById('upload_student_data_btn').addEventListener('click', function() {
             const fileInput = document.getElementById('student_data_upload');
@@ -569,39 +618,34 @@
                     const worksheet = workbook.Sheets[firstSheetName];
                     const json = XLSX.utils.sheet_to_json(worksheet);
 
-                    // Clear existing data
-                    studentData = {};
-                    const tableBody = document.getElementById('student_data_table_body');
-                    tableBody.innerHTML = '';
-
+                    let newStudentData = {}; // Temporary object for new data
                     if (json.length > 0) {
                         let importedCount = 0;
                         json.forEach(row => {
                             // Flexible column name matching (case insensitive, allows spaces)
                             const mid = String(findColumnValue(row, ['mid', 'student id', 'id'])).trim();
                             if (mid) {
-                                studentData[mid] = {
+                                newStudentData[mid] = {
                                     name: findColumnValue(row, ['name', 'student name', 'student']),
                                     class: findColumnValue(row, ['class', 'grade', 'section']),
                                     room_cup: findColumnValue(row, ['room/cup', 'room', 'cup', 'location'])
                                 };
-
-                                // Add to display table
-                                const tr = document.createElement('tr');
-                                tr.innerHTML = `
-                                    <td>${mid}</td>
-                                    <td>${studentData[mid].name || ''}</td>
-                                    <td>${studentData[mid].class || ''}</td>
-                                    <td>${studentData[mid].room_cup || ''}</td>
-                                `;
-                                tableBody.appendChild(tr);
                                 importedCount++;
                             }
                         });
                         
-                        document.getElementById('imported_student_data_display').classList.remove('hidden');
-                        alert(`Successfully imported ${importedCount} student records!`);
-                        console.log('Imported Student Data:', studentData);
+                        // Save imported student data to Firebase
+                        database.ref('studentData').set(newStudentData)
+                            .then(() => {
+                                alert(`Successfully imported ${importedCount} student records and saved to Firebase!`);
+                                console.log("Student data saved to Firebase!");
+                                // studentData will be updated via the 'value' listener
+                            })
+                            .catch(error => {
+                                console.error("Error saving student data to Firebase: ", error);
+                                alert('Error saving student data. Please try again.');
+                            });
+
                     } else {
                         alert('No valid data found in the selected file.');
                         document.getElementById('imported_student_data_display').classList.add('hidden');
@@ -637,6 +681,36 @@
         if (initialMid) {
             document.getElementById('student_mid').dispatchEvent(new Event('input'));
         }
+
+        // Load existing health records from Firebase when the page loads and listen for changes
+        database.ref('healthRecords').on('value', (snapshot) => {
+            recordedData = []; // Clear current data
+            snapshot.forEach((childSnapshot) => {
+                recordedData.push(childSnapshot.val());
+            });
+            // Only update display if on the record page or if it's the initial load
+            if (document.getElementById('page2').classList.contains('active-page') || !document.querySelector('.active-page')) {
+                displayRecordedData();
+                updateGraph();
+            }
+        });
+
+        // Load existing student data from Firebase when the page loads and listen for changes
+        database.ref('studentData').on('value', (snapshot) => {
+            if (snapshot.exists()) {
+                studentData = snapshot.val();
+                console.log("Student data loaded from Firebase:", studentData);
+                // Update the student data table display if on the student data page
+                if (document.getElementById('page3').classList.contains('active-page')) {
+                    displayImportedStudentData();
+                }
+            } else {
+                studentData = {}; // Clear student data if no data in Firebase
+                if (document.getElementById('page3').classList.contains('active-page')) {
+                    displayImportedStudentData(); // Clear the displayed table
+                }
+            }
+        });
     </script>
 </body>
 </html>
