@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>School Health Record System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+        }
+        .page {
+            display: none;
+            padding: 2rem;
+        }
+        .active-page {
+            display: block;
+        }
+        .kadha-item, .med-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        .issue-label {
+            margin-left: 0.5rem;
+            font-weight: 500;
+        }
+        .navigation {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background: #f8f9fa;
+            padding: 1rem;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-around;
+        }
+        .btn {
+            background-color: #007bff;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .header {
+            background: linear-gradient(90deg, #007bff, #00c6ff);
+            color: white;
+        }
+        .form-group label {
+            color: #343a40;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            border: 1px solid #ced4da;
+            border-radius: 0.375rem;
+            padding: 0.5rem;
+            width: 100%;
+            transition: border-color 0.3s;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        .chart-container {
+            position: relative;
+            margin-top: 2rem;
+            height: 400px;
+        }
+        .table-container {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.375rem;
+        }
+        .student-table, .record-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .student-table th, .student-table td, .record-table th, .record-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .student-table th, .record-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #4a5568;
+            position: sticky;
+            top: 0;
+        }
+        .autofill-icon {
+            position: absolute;
+            right: 10px;
+            top: 35px;
+            color: #28a745;
+            display: none;
+        }
+        /* Styles for check/cross marks */
+        .check-mark {
+            color: green;
+            font-weight: bold;
+        }
+        .cross-mark {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- Header -->
+    <header class="header p-4 shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold">School Health Record System</h1>
+            <div id="current-date" class="text-white"></div>
+        </div>
+    </header>
+
+    <!-- Page 1: Submit -->
+    <div id="page1" class="page active-page">
+        <div class="container mx-auto mt-8 max-w-2xl">
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-6 text-gray-800">Submit Health Report</h2>
+                
+                <form id="issueForm" class="space-y-4">
+                    <!-- Floor Selection -->
+                    <div class="form-group">
+                        <label for="floor" class="block text-sm font-medium mb-1">Select Floor</label>
+                        <select id="floor" name="floor" required>
+                            <option value="" disabled selected>Choose floor</option>
+                            <option value="1">Floor 1</option>
+                            <option value="2">Floor 2</option>
+                            <option value="3">Floor 3</option>
+                            <option value="4">Floor 4</option>
+                            <option value="5">Floor 5</option>
+                            <option value="6">Floor 6</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Student Details -->
+                    <div class="form-group relative">
+                        <label for="student_mid" class="block text-sm font-medium mb-1">MID</label>
+                        <input type="text" id="student_mid" name="student_mid" required>
+                        <span id="mid_autofill_icon" class="autofill-icon">✓ Auto-filled</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="student_name" class="block text-sm font-medium mb-1">Name</label>
+                        <input type="text" id="student_name" name="student_name" readonly>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="student_class" class="block text-sm font-medium mb-1">Class</label>
+                        <input type="text" id="student_class" name="student_class" readonly>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="room_cup" class="block text-sm font-medium mb-1">Room/Cup</label>
+                        <input type="text" id="room_cup" name="room_cup" readonly>
+                    </div>
+                    
+                    <!-- Issues -->
+                    <div class="form-group">
+                        <label class="block text-sm font-medium mb-2">Description of Issue</label>
+                        <textarea id="issue_description" rows="3" placeholder="Describe the issue in detail..."></textarea>
+                    </div>
+                    
+                    <!-- KDHA Issues -->
+                    <div class="kadha-issues mt-6">
+                        <h3 class="text-lg font-medium text-gray-800 mb-3">KDHA Issues</h3>
+                        <div class="kadha-item">
+                            <input type="checkbox" id="kdha_01" name="kdha_01">
+                            <label for="kdha_01" class="issue-label">KDHA-01</label>
+                        </div>
+                        <div class="kadha-item">
+                            <input type="checkbox" id="kdha_02" name="kdha_02">
+                            <label for="kdha_02" class="issue-label">KDHA-02</label>
+                        </div>
+                    </div>
+                    
+                    <!-- MED Issues -->
+                    <div class="med-issues mt-6">
+                        <h3 class="text-lg font-medium text-gray-800 mb-3">MED Issues</h3>
+                        <div class="med-item">
+                            <input type="checkbox" id="med_01" name="med_01">
+                            <label for="med_01" class="issue-label">MED-01</label>
+                        </div>
+                        <div class="med-item">
+                            <input type="checkbox" id="med_02" name="med_02">
+                            <label for="med_02" class="issue-label">MED-02</label>
+                        </div>
+                        <div class="med-item">
+                            <input type="checkbox" id="med_03" name="med_03">
+                            <label for="med_03" class="issue-label">MED-03</label>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-8">
+                        <button type="submit" class="btn w-full">
+                            Submit Report
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page 2: Record -->
+    <div id="page2" class="page">
+        <div class="container mx-auto mt-8 max-w-2xl">
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-6 text-gray-800">Health Records</h2>
+                
+                <div class="mb-4">
+                    <label for="filter_floor" class="block text-sm font-medium mb-1">Filter by Floor</label>
+                    <select id="filter_floor">
+                        <option value="">All Floors</option>
+                        <option value="1">Floor 1</option>
+                        <option value="2">Floor 2</option>
+                        <option value="3">Floor 3</option>
+                        <option value="4">Floor 4</option>
+                        <option value="5">Floor 5</option>
+                        <option value="6">Floor 6</option>
+                    </select>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="filter_date" class="block text-sm font-medium mb-1">Filter by Date</label>
+                    <input type="date" id="filter_date">
+                </div>
+                
+                <div class="mb-4">
+                    <label for="filter_issues" class="block text-sm font-medium mb-1">Filter by Issues</label>
+                    <select id="filter_issues">
+                        <option value="">All Issues</option>
+                        <option value="kdha_01">KDHA-01</option>
+                        <option value="kdha_02">KDHA-02</option>
+                        <option value="med_01">MED-01</option>
+                        <option value="med_02">MED-02</option>
+                        <option value="med_03">MED-03</option>
+                    </select>
+                </div>
+                
+                <button id="filter_button" class="btn w-full mb-6">
+                    Apply Filters
+                </button>
+
+                <div class="table-container">
+                    <h3 class="text-lg font-medium text-gray-800 mb-3">Submitted Reports</h3>
+                    <table class="record-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Floor</th>
+                                <th>MID</th>
+                                <th>Name</th>
+                                <th>Class</th>
+                                <th>Room/Cup</th>
+                                <th>Description</th>
+                                <th>KDHA-01</th>
+                                <th>KDHA-02</th>
+                                <th>MED-01</th>
+                                <th>MED-02</th>
+                                <th>MED-03</th>
+                            </tr>
+                        </thead>
+                        <tbody id="record_table_body">
+                            <!-- Submitted data will be inserted here -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="chart-container">
+                    <canvas id="issuesChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page 3: Student Data -->
+    <div id="page3" class="page">
+        <div class="container mx-auto mt-8 max-w-2xl">
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-6 text-gray-800">Student Data Management</h2>
+                
+                <div class="form-group mb-4">
+                    <label for="student_data_upload" class="block text-sm font-medium mb-1">Import Student Data (CSV/XLSX)</label>
+                    <input type="file" id="student_data_upload" accept=".csv, .xlsx" class="w-full p-2 border border-gray-300 rounded-md">
+                </div>
+                <button id="upload_student_data_btn" class="btn w-full mb-6">Upload Data</button>
+
+                <div id="imported_student_data_display" class="table-container hidden">
+                    <h3 class="text-lg font-medium text-gray-800 mb-3">Imported Student List</h3>
+                    <table class="student-table">
+                        <thead>
+                            <tr>
+                                <th>MID</th>
+                                <th>Name</th>
+                                <th>Class</th>
+                                <th>Room/Cup</th>
+                            </tr>
+                        </thead>
+                        <tbody id="student_data_table_body">
+                            <!-- Imported data will be inserted here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="form-group mt-6">
+                    <label for="search_mid" class="block text-sm font-medium mb-1">Search Student by MID</label>
+                    <input type="text" id="search_mid" class="w-full p-2 border border-gray-300 rounded-md">
+                </div>
+                
+                <div class="mt-4">
+                    <button id="search_button" class="btn w-full">
+                        Search Student
+                    </button>
+                </div>
+                
+                <div id="student_info" class="mt-6 hidden">
+                    <h3 class="text-lg font-medium text-gray-800">Student Information</h3>
+                    <p><strong>Name:</strong> <span id="student_info_name"></span></p>
+                    <p><strong>Class:</strong> <span id="student_info_class"></span></p>
+                    <p><strong>Room/Cup:</strong> <span id="student_info_room_cup"></span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="navigation">
+        <button onclick="navigateTo(1)" class="btn">Submit</button>
+        <button onclick="navigateTo(2)" class="btn">Record</button>
+        <button onclick="navigateTo(3)" class="btn">Student Data</button>
+    </div>
+
+    <script>
+       // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyC1EyWbu0v-XgIR7IfymXwuP11J-uvyw_w",
+  authDomain: "health-data-9988f.firebaseapp.com",
+  projectId: "health-data-9988f",
+  storageBucket: "health-data-9988f.firebasestorage.app",
+  messagingSenderId: "669353082503",
+  appId: "1:669353082503:web:154ad1c4517677ce1dc222",
+  measurementId: "G-YZ11KZLRL1"
+};
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // Global student data storage
+        let studentData = {
+            // Sample data - will be replaced by imported data or fetched from Firebase
+            '101': { name: 'John Doe', class: '10A', room_cup: 'Room 101' },
+            '102': { name: 'Jane Smith', class: '10B', room_cup: 'Room 102' }
+        };
+
+        // Global storage for submitted health records
+        let recordedData = [];
+
+        // Display current date
+        function updateDate() {
+            const date = new Date();
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('current-date').textContent = date.toLocaleDateString('en-US', options);
+        }
+        
+        // Navigation between pages
+        function navigateTo(pageNumber) {
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active-page');
+            });
+            document.getElementById(`page${pageNumber}`).classList.add('active-page');
+            
+            // Update navigation button styles
+            document.querySelectorAll('.navigation button').forEach((btn, index) => {
+                if(index + 1 === pageNumber) {
+                    btn.classList.add('bg-blue-600');
+                } else {
+                    btn.classList.remove('bg-blue-600');
+                }
+            });
+
+            // If navigating to Record page, update the table and graph
+            if (pageNumber === 2) {
+                // Fetch data from Firebase when navigating to the Record page
+                fetchRecordedDataFromFirebase();
+            }
+        }
+        
+        // Enhanced auto-fill student details on Page 1
+        document.getElementById('student_mid').addEventListener('input', function() {
+            const mid = this.value.trim();
+            const autofillIcon = document.getElementById('mid_autofill_icon');
+            
+            if (mid && studentData[mid]) {
+                const student = studentData[mid];
+                document.getElementById('student_name').value = student.name || '';
+                document.getElementById('student_class').value = student.class || '';
+                document.getElementById('room_cup').value = student.room_cup || '';
+                autofillIcon.style.display = 'block';
+                
+                // Hide the icon after 3 seconds
+                setTimeout(() => {
+                    autofillIcon.style.display = 'none';
+                }, 3000);
+            } else {
+                document.getElementById('student_name').value = '';
+                document.getElementById('student_class').value = '';
+                document.getElementById('room_cup').value = '';
+                autofillIcon.style.display = 'none';
+            }
+        });
+
+        // Form submission (Page 1)
+        document.getElementById('issueForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = {
+                date: new Date().toISOString().split('T')[0],
+                floor: document.getElementById('floor').value,
+                student_mid: document.getElementById('student_mid').value,
+                student_name: document.getElementById('student_name').value,
+                student_class: document.getElementById('student_class').value,
+                room_cup: document.getElementById('room_cup').value,
+                issue_description: document.getElementById('issue_description').value,
+                kdha_01: document.getElementById('kdha_01').checked,
+                kdha_02: document.getElementById('kdha_02').checked,
+                med_01: document.getElementById('med_01').checked,
+                med_02: document.getElementById('med_02').checked,
+                med_03: document.getElementById('med_03').checked
+            };
+            
+            // Save data to Firebase Realtime Database
+            database.ref('health_reports').push(formData)
+                .then(() => {
+                    console.log('Form submitted and saved to Firebase:', formData);
+                    alert('Issue report submitted successfully!');
+                    this.reset();
+                    // No need to push to local recordedData here, as it will be fetched from Firebase
+                    // when navigating to the Record page or on initial load.
+                })
+                .catch(error => {
+                    console.error('Error saving to Firebase:', error);
+                    alert('Error submitting report. Please try again.');
+                });
+        });
+        
+        // Helper function to get check/cross mark
+        function getMark(isChecked) {
+            return isChecked ? '<span class="check-mark">✓</span>' : '<span class="cross-mark">✗</span>';
+        }
+
+        // Fetch recorded data from Firebase
+        function fetchRecordedDataFromFirebase() {
+            database.ref('health_reports').on('value', (snapshot) => {
+                recordedData = []; // Clear existing data
+                snapshot.forEach((childSnapshot) => {
+                    recordedData.push(childSnapshot.val());
+                });
+                displayRecordedData(); // Update the table with fetched data
+                updateGraph(); // Update the graph with fetched data
+            }, (errorObject) => {
+                console.error('The read failed: ' + errorObject.name);
+            });
+        }
+
+        // Display recorded data in table (Page 2)
+        function displayRecordedData() {
+            const tableBody = document.getElementById('record_table_body');
+            tableBody.innerHTML = ''; // Clear existing rows
+
+            const filterFloor = document.getElementById('filter_floor').value;
+            const filterDate = document.getElementById('filter_date').value;
+            const filterIssues = document.getElementById('filter_issues').value;
+
+            const filteredData = recordedData.filter(entry => {
+                const matchesFloor = filterFloor === "" || entry.floor === filterFloor;
+                const matchesDate = filterDate === "" || entry.date === filterDate;
+                const matchesIssue = filterIssues === "" || entry[filterIssues];
+                return matchesFloor && matchesDate && matchesIssue;
+            });
+
+            filteredData.forEach(entry => {
+                const row = `
+                    <tr>
+                        <td>${entry.date}</td>
+                        <td>${entry.floor}</td>
+                        <td>${entry.student_mid}</td>
+                        <td>${entry.student_name}</td>
+                        <td>${entry.student_class}</td>
+                        <td>${entry.room_cup}</td>
+                        <td>${entry.issue_description}</td>
+                        <td>${getMark(entry.kdha_01)}</td>
+                        <td>${getMark(entry.kdha_02)}</td>
+                        <td>${getMark(entry.med_01)}</td>
+                        <td>${getMark(entry.med_02)}</td>
+                        <td>${getMark(entry.med_03)}</td>
+                    </tr>
+                `;
+                tableBody.insertAdjacentHTML('beforeend', row);
+            });
+        }
+
+        // Apply filters for recorded data (Page 2)
+        document.getElementById('filter_button').addEventListener('click', displayRecordedData);
+        
+        // Update graph (Page 2)
+        function updateGraph() {
+            const ctx = document.getElementById('issuesChart').getContext('2d');
+            const issueCounts = {
+                'KDHA-01': 0,
+                'KDHA-02': 0,
+                'MED-01': 0,
+                'MED-02': 0,
+                'MED-03': 0
+            };
+            
+            // Filter data for graph based on current filters
+            const filterFloor = document.getElementById('filter_floor').value;
+            const filterDate = document.getElementById('filter_date').value;
+            // The filterIssues dropdown is primarily for the table, not directly for the graph counts,
+            // as the graph shows counts for all issue types.
+
+            const dataForGraph = recordedData.filter(entry => {
+                const matchesFloor = filterFloor === "" || entry.floor === filterFloor;
+                const matchesDate = filterDate === "" || entry.date === filterDate;
+                return matchesFloor && matchesDate;
+            });
+
+            dataForGraph.forEach(entry => {
+                if (entry.kdha_01) issueCounts['KDHA-01']++;
+                if (entry.kdha_02) issueCounts['KDHA-02']++;
+                if (entry.med_01) issueCounts['MED-01']++;
+                if (entry.med_02) issueCounts['MED-02']++;
+                if (entry.med_03) issueCounts['MED-03']++;
+            });
+            
+            const chartData = {
+                labels: Object.keys(issueCounts),
+                datasets: [{
+                    label: 'Number of Issues Reported',
+                    data: Object.values(issueCounts),
+                    backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            };
+            
+            if (window.issuesChart) {
+                window.issuesChart.destroy();
+            }
+            window.issuesChart = new Chart(ctx, {
+                type: 'bar',
+                data: chartData,
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Search for student data (Page 3)
+        document.getElementById('search_button').addEventListener('click', function() {
+            const mid = document.getElementById('search_mid').value.trim();
+            const student = studentData[mid];
+            
+            if (student) {
+                document.getElementById('student_info_name').textContent = student.name;
+                document.getElementById('student_info_class').textContent = student.class;
+                document.getElementById('student_info_room_cup').textContent = student.room_cup;
+                document.getElementById('student_info').classList.remove('hidden');
+            } else {
+                alert('Student not found! Please ensure data is imported or MID is correct.');
+                document.getElementById('student_info').classList.add('hidden');
+            }
+        });
+
+        // Import Student Data (Page 3)
+        document.getElementById('upload_student_data_btn').addEventListener('click', function() {
+            const fileInput = document.getElementById('student_data_upload');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                alert('Please select a file to upload.');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const json = XLSX.utils.sheet_to_json(worksheet);
+
+                    // Clear existing data
+                    studentData = {};
+                    const tableBody = document.getElementById('student_data_table_body');
+                    tableBody.innerHTML = '';
+
+                    if (json.length > 0) {
+                        let importedCount = 0;
+                        json.forEach(row => {
+                            // Flexible column name matching (case insensitive, allows spaces)
+                            const mid = String(findColumnValue(row, ['mid', 'student id', 'id'])).trim();
+                            if (mid) {
+                                studentData[mid] = {
+                                    name: findColumnValue(row, ['name', 'student name', 'student']),
+                                    class: findColumnValue(row, ['class', 'grade', 'section']),
+                                    room_cup: findColumnValue(row, ['room/cup', 'room', 'cup', 'location'])
+                                };
+
+                                // Add to display table
+                                const tr = document.createElement('tr');
+                                tr.innerHTML = `
+                                    <td>${mid}</td>
+                                    <td>${studentData[mid].name || ''}</td>
+                                    <td>${studentData[mid].class || ''}</td>
+                                    <td>${studentData[mid].room_cup || ''}</td>
+                                `;
+                                tableBody.appendChild(tr);
+                                importedCount++;
+                            }
+                        });
+                        
+                        document.getElementById('imported_student_data_display').classList.remove('hidden');
+                        alert(`Successfully imported ${importedCount} student records!`);
+                        console.log('Imported Student Data:', studentData);
+
+                        // Optionally, save imported student data to Firebase
+                        // database.ref('student_master_data').set(studentData)
+                        //     .then(() => console.log("Student master data saved to Firebase"))
+                        //     .catch(error => console.error("Error saving student master data:", error));
+
+                    } else {
+                        alert('No valid data found in the selected file.');
+                        document.getElementById('imported_student_data_display').classList.add('hidden');
+                    }
+                } catch (error) {
+                    console.error('Error processing file:', error);
+                    alert('Error processing file. Please ensure it is a valid CSV or Excel file.');
+                }
+            };
+            reader.onerror = function() {
+                alert('Error reading file. Please try again.');
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        // Helper function to find column value with flexible matching
+        function findColumnValue(row, possibleColumnNames) {
+            for (const name of possibleColumnNames) {
+                for (const key in row) {
+                    if (key.toLowerCase().includes(name.toLowerCase())) {
+                        return row[key];
+                    }
+                }
+            }
+            return '';
+        }
+        
+        // Initialize
+        updateDate();
+        // Initial fetch of recorded data when the page loads
+        fetchRecordedDataFromFirebase();
+        
+        // Trigger auto-fill if MID is already entered when page loads
+        const initialMid = document.getElementById('student_mid').value;
+        if (initialMid) {
+            document.getElementById('student_mid').dispatchEvent(new Event('input'));
+        }
+    </script>
+</body>
+</html>
